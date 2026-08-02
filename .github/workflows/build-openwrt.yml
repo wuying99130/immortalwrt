@@ -32,7 +32,7 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        [ -e r1s-h3.config ] && mv r1s-h3.config openwrt/.config
+        [ -e r1s-h3.config ] && cp -f r1s-h3.config openwrt/.config
         cd openwrt
         make defconfig
 
