@@ -1,4 +1,4 @@
-name: Build ImmortalWrt for NanoPi-R1
+name: Build ImmortalWrt for NanoPi R1S-H3
 
 on:
   workflow_dispatch:
