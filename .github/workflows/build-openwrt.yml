@@ -32,8 +32,22 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        [ -e r1s-h3.config ] && cp -f r1s-h3.config openwrt/.config
         cd openwrt
+        # 1. 彻底清除旧配置，防止隐藏残余干扰
+        rm -f .config .config.old
+        
+        # 2. 引入自定义基础配置
+        if [ -e ../r1s-h3.config ]; then
+          cp -f ../r1s-h3.config .config
+        fi
+        
+        # 3. 强行追加中文语言包
+        echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+        echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+        echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y" >> .config
+        echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
+        
+        # 4. 单次完整依赖解析
         make defconfig
 
     - name: Download package
