@@ -23,15 +23,17 @@ jobs:
 
       - name: Update and Install Feeds
         run: |
-          # 1. 确保默认 feeds 配置文件存在
-          if [ ! -f "feeds.conf.default" ] && [ -f "feeds.conf.default.default" ]; then
-            cp feeds.conf.default.default feeds.conf.default
-          fi
+          # 1. 强行重写 feeds.conf.default，只保留绝对安全的官方基础源，彻底杜绝任何第三方（如 passwall）索引残留
+          cat << 'EOF' > feeds.conf.default
+          src-git packages https://github.com/immortalwrt/packages.git;main
+          src-git luic https://github.com/immortalwrt/luci.git;main
+          src-git routing https://github.com/immortalwrt/routing.git;main
+          src-git telephony https://github.com/immortalwrt/telephony.git;main
+          src-git video https://github.com/immortalwrt/video.git;main
+          EOF
           
-          # 2. 清理掉容易引发合并冲突、导致脚本崩溃的第三方代理聚合源（如 passwall_packages）
-          sed -i '/passwall_packages/d' feeds.conf.default || true
-          
-          # 3. 更新并仅安装核心和官方 Feeds，彻底根除 merging 阶段的 Exit Code 1 报错
+          # 2. 清理环境并安全更新安装
+          rm -rf feeds/*.index || true
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
