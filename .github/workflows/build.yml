@@ -6,7 +6,7 @@ on:
     inputs:
       ssh:
         description: 'SSH connection to Actions'
-        required: 'false'
+        required: false
         default: 'false'
         type: boolean
 
@@ -24,7 +24,7 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
-        # 修正：去掉了不存在的虚拟包 build-upstream-tools
+        # 修正：去掉了不存在的虚拟包 build-upstream-tools，保留所有真正需要的编译依赖
         sudo -E apt-get -qq install $(cat << 'EOF'
         asciidoc bash bc binutils bzip2 diffcore-utils dos2unix \
         flex gawk git gnutls-bin g++ intltool jq libncurses5-dev libssl-dev \
