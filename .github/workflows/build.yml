@@ -32,9 +32,8 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Load Custom Configuration
+    - name: Update Configuration and DTS
       run: |
-        [ -e files ] && mv files openwrt/files
         if [ -e r1s-h3.config.seed ]; then
           cp r1s-h3.config.seed openwrt/.config
         elif [ -e .config ]; then
@@ -42,10 +41,19 @@ jobs:
         fi
         cd openwrt
         
-        # 核心改进：强制开启单设备精简模式，禁止盲目编译全架构下其他无关板子
-        echo "CONFIG_ALL=n" >> .config
+        # 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay，保障无线网卡驱动拉起
+        DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
+        if [ -n "$DTS_FILE" ]; then
+          sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
+        fi
         
         make defconfig
+
+    - name: Download Package Toolchain
+      run: |
+        cd openwrt
+        make download -j8
+        find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile Firmware
       run: |
@@ -58,21 +66,17 @@ jobs:
       if: (!cancelled())
       run: |
         cd openwrt
-        # 创建专属的干净输出目录
         mkdir -p firmware_out
         
-        # 严格定位到 sunxi/cortexa7 目录，剔除 packages，把打包好的镜像和 sha256 提出来
+        # 精准定位 sunxi/cortexa7 目录，剔除 packages，把属于镜像产物和校验文件拷贝出来
         TARGET_DIR=$(find bin/targets/sunxi/ -type d -name "cortexa7" | head -n 1)
         if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then
           rm -rf "$TARGET_DIR/packages"
-          cp -f "$TARGET_DIR"/* firmware_out/ 2>/dev/null || true
+          find "$TARGET_DIR" -maxdepth 1 -type f \( -name "*.img.gz" -o -name "*.bin" -o -name "sha256sums" \) -exec cp -f {} firmware_out/ \;
         fi
         
-        # 将绝对路径写进环境变量供 Release 上传
         echo "FIRMWARE=$PWD/firmware_out" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_ENV
-        
-        # 打印目录文件方便对账
         ls -lh firmware_out/
 
     - name: Upload Firmware to Release
@@ -84,7 +88,6 @@ jobs:
         tag_name: nano-r1s-h3-base-$(date +%Y%m%d)
         files: ${{ env.FIRMWARE }}/*
         body: |
-          NanoPi R1S-H3 专属定制底座固件
-          - 纯净单设备精简编译，无无关杂项
+          NanoPi R1S-H3 专属定制固件
           - 包含中文界面与 Argon 主题
           - 完美支持有线网卡与板载无线网卡（BCM43430 SDIO）
