@@ -21,9 +21,15 @@ jobs:
             file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
             libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
 
-      - name: Update Feeds
+      - name: Update and Install Feeds
         run: |
-          ./scripts/feeds update -a
+          # 清理可能存在的旧 feeds 缓存，防止合并冲突
+          rm -rf feeds.conf.default
+          
+          # 更新 feeds（加入防冲突容错）
+          ./scripts/feeds update -a || ./scripts/feeds update -a
+          
+          # 安装 feeds
           ./scripts/feeds install -a
 
       - name: Apply Configuration & WiFi Fixes
@@ -72,14 +78,13 @@ jobs:
 
       - name: Compile Firmware
         run: |
-          # 精准定向只编译 target 为 sunxi 且限定 nanopi-r1s-h3 的内核/固件，避免全局漫无目的地多板并发编译
           make -j$(nproc) || make -j1 V=s
 
       - name: Organize Artifacts
         run: |
           mkdir -p bin/out
           
-          # 仅提取与 nanopi-r1s-h3 相关的固件与校验、元数据文件，彻底丢弃其他无关板子
+          # 仅提取与 nanopi-r1s-h3 相关的固件、sha256sums 和校验文件，绝不输出其他无关板子
           find bin/targets/sunxi/cortexa7/ -type f \( -name "*nanopi-r1s-h3*" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
 
       - name: Upload Artifacts
