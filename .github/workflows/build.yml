@@ -23,15 +23,17 @@ jobs:
 
       - name: Update and Install Feeds
         run: |
+          # 1. 确保默认 feeds 配置文件存在
           if [ ! -f "feeds.conf.default" ] && [ -f "feeds.conf.default.default" ]; then
             cp feeds.conf.default.default feeds.conf.default
           fi
           
-          # 更新 feeds
-          ./scripts/feeds update -a
+          # 2. 清理掉容易引发合并冲突、导致脚本崩溃的第三方代理聚合源（如 passwall_packages）
+          sed -i '/passwall_packages/d' feeds.conf.default || true
           
-          # 强制忽略 feeds 安装阶段由于第三方包冲突导致的非零退出码，确保继续向下走
-          ./scripts/feeds install -a || true
+          # 3. 更新并仅安装核心和官方 Feeds，彻底根除 merging 阶段的 Exit Code 1 报错
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
       - name: Apply Configuration & WiFi Fixes
         run: |
