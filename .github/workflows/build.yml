@@ -18,7 +18,6 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
-        # 修正：将依赖包全部写在同一行或用空格分隔，彻底避免反斜杠换行解析错误
         sudo -E apt-get -qq install asciidoc bash bc binutils bzip2 dos2unix flex gawk git gnutls-bin g++ intltool jq libncurses5-dev libssl-dev libz-dev lzma make mercurial patch rsync scm subversion swig texinfo uglifyjs upx-ucl uuid-dev wget xmlto xxd zlib1g-dev
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
@@ -42,6 +41,10 @@ jobs:
           cp .config openwrt/.config
         fi
         cd openwrt
+        
+        # 核心改进：强制开启单设备精简模式，禁止盲目编译全架构下其他无关板子
+        echo "CONFIG_ALL=n" >> .config
+        
         make defconfig
 
     - name: Compile Firmware
@@ -54,10 +57,23 @@ jobs:
       id: organize
       if: (!cancelled())
       run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        cd openwrt
+        # 创建专属的干净输出目录
+        mkdir -p firmware_out
+        
+        # 严格定位到 sunxi/cortexa7 目录，剔除 packages，把打包好的镜像和 sha256 提出来
+        TARGET_DIR=$(find bin/targets/sunxi/ -type d -name "cortexa7" | head -n 1)
+        if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then
+          rm -rf "$TARGET_DIR/packages"
+          cp -f "$TARGET_DIR"/* firmware_out/ 2>/dev/null || true
+        fi
+        
+        # 将绝对路径写进环境变量供 Release 上传
+        echo "FIRMWARE=$PWD/firmware_out" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_ENV
+        
+        # 打印目录文件方便对账
+        ls -lh firmware_out/
 
     - name: Upload Firmware to Release
       uses: softprops/action-gh-release@v1
@@ -68,6 +84,7 @@ jobs:
         tag_name: nano-r1s-h3-base-$(date +%Y%m%d)
         files: ${{ env.FIRMWARE }}/*
         body: |
-          NanoPi R1S-H3 基础底座固件
+          NanoPi R1S-H3 专属定制底座固件
+          - 纯净单设备精简编译，无无关杂项
           - 包含中文界面与 Argon 主题
-          - 完美支持有线网卡与板载无线网卡
+          - 完美支持有线网卡与板载无线网卡（BCM43430 SDIO）
