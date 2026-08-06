@@ -23,13 +23,13 @@ jobs:
 
       - name: Update and Install Feeds
         run: |
-          # 清理可能存在的旧 feeds 缓存，防止合并冲突
-          rm -rf feeds.conf.default
+          # 如果 feeds.conf 不存在，则通过默认的 feeds.conf.default 还原
+          if [ ! -f "feeds.conf.default" ] && [ -f "feeds.conf.default.default" ]; then
+            cp feeds.conf.default.default feeds.conf.default
+          fi
           
-          # 更新 feeds（加入防冲突容错）
-          ./scripts/feeds update -a || ./scripts/feeds update -a
-          
-          # 安装 feeds
+          # 更新与安装 feeds
+          ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Apply Configuration & WiFi Fixes
@@ -84,7 +84,7 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          # 仅提取与 nanopi-r1s-h3 相关的固件、sha256sums 和校验文件，绝不输出其他无关板子
+          # 仅提取与 nanopi-r1s-h3 相关的固件与校验文件，过滤掉其他无关板子
           find bin/targets/sunxi/cortexa7/ -type f \( -name "*nanopi-r1s-h3*" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
 
       - name: Upload Artifacts
