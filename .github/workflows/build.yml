@@ -23,6 +23,10 @@ jobs:
 
       - name: Update Feeds
         run: |
+          # 补充：自动拉取 passwall 依赖仓库，防止 config 解析时提示找不到目录而报错
+          git clone https://github.com/xiaorouji/openwrt-passwall-packages.git feeds/passwall_packages || true
+          git clone https://github.com/xiaorouji/openwrt-passwall.git feeds/passwall || true
+
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -91,6 +95,7 @@ jobs:
           mkdir -p bin/out
           
           echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
+          # 只复制 cortexa7 根目录下的 .img.gz 固件和 sha256 校验文件，确保无线和所有功能正常带入
           find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 打包输出目录清单 ==="
