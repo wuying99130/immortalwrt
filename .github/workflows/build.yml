@@ -27,8 +27,10 @@ jobs:
             cp feeds.conf.default.default feeds.conf.default
           fi
           
-          # 更新 feeds，并针对第三方源可能产生的冲突做容错
+          # 更新 feeds
           ./scripts/feeds update -a
+          
+          # 强制忽略 feeds 安装阶段由于第三方包冲突导致的非零退出码，确保继续向下走
           ./scripts/feeds install -a || true
 
       - name: Apply Configuration & WiFi Fixes
