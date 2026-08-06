@@ -14,70 +14,73 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/gh
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison gawk g++-multilib g++ \
             gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
             file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
             libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
 
-      - name: Update and Install Feeds
+      - name: Update Feeds
         run: |
-          # 1. 如果 feeds.conf.default 不存在，则从官方默认备份复制
-          if [ ! -f "feeds.conf.default" ] && [ -f "feeds.conf.default.default" ]; then
-            cp feeds.conf.default.default feeds.conf.default
-          fi
-          
-          # 2. 精准剔除可能引起冲突或失效的第三方源（如 passwall 及其相关项）
-          sed -i '/passwall/d' feeds.conf.default || true
-          
-          # 3. 使用源码自带的官方标准源执行更新和安装
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Apply Configuration & WiFi Fixes
+      - name: Update Configuration and DTS
         run: |
           cp r1s-h3.config.seed .config
           
-          # 1. 严格锁定 NanoPi R1S-H3 设备名
+          # 1. 完整保留架构与设备目标
           echo "CONFIG_TARGET_sunxi=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 匹配并激活 R1S-H3 的 DTS 无线 WiFi 节点
+          # 2. 精准补全 NanoPi R1S-H3 板载 Broadcom 无线网卡驱动及核心依赖
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
+          echo "CONFIG_PACKAGE_brcmfmac-firmware-43430=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-cfg80211=y" >> .config
+          echo "CONFIG_PACKAGE_iw=y" >> .config
+          echo "CONFIG_PACKAGE_iwinfo=y" >> .config
+          echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
+          
+          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
-            echo "Applying SDIO overlay to: $DTS_FILE"
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
-            
-            echo '' >> "$DTS_FILE"
-            echo '&mmc2 {' >> "$DTS_FILE"
-            echo '	pinctrl-names = "default";' >> "$DTS_FILE"
-            echo '	pinctrl-0 = <&mmc2_8bit_pins>;' >> "$DTS_FILE"
-            echo '	vmmc-supply = <&reg_vcc3v3>;' >> "$DTS_FILE"
-            echo '	vqmmc-supply = <&reg_vcc3v3>;' >> "$DTS_FILE"
-            echo '	bus-width = <4>;' >> "$DTS_FILE"
-            echo '	non-removable;' >> "$DTS_FILE"
-            echo '	status = "okay";' >> "$DTS_FILE"
-            echo '' >> "$DTS_FILE"
-            echo '	brcmf: wifi@1 {' >> "$DTS_FILE"
-            echo '		reg = <1>;' >> "$DTS_FILE"
-            echo '		compatible = "brcm,bcm4329-fmac";' >> "$DTS_FILE"
-            echo '	};' >> "$DTS_FILE"
-            echo '};' >> "$DTS_FILE"
-          fi
-          
-          # 3. 设置默认 LAN IP 为 192.168.199.1 & 开启权威 DHCP 模式秒连
-          UCI_CUSTOM="package/base-files/files/bin/config_generate"
-          if [ -f "$UCI_CUSTOM" ]; then
-            sed -i 's/192.168.1.1/192.168.199.1/g' "$UCI_CUSTOM"
-          fi
-          DHCP_CONF="package/network/services/dnsmasq/files/dhcp.conf"
-          if [ -f "$DHCP_CONF" ]; then
-            sed -i "/config dhcp 'lan'/a \\\toption authoritative '1'" "$DHCP_CONF"
           fi
           
           make defconfig
+
+      - name: Inject Default Wireless Configuration
+        run: |
+          # 4. 在根文件系统预置无线配置文件，确保固件刷入后 Wi-Fi 默认启用并加入 br-lan
+          mkdir -p files/etc/config
+          cat << 'EOF' > files/etc/config/wireless
+
+          config wifi-device 'radio0'
+              option type 'mac80211'
+              option channel '11'
+              option hwmode '11g'
+              option path 'platform/soc/1c11000.mmc/mmc_host/mmc2/mmc2:0001/mmc2:0001:1'
+              option htmode 'HT20'
+              option disabled '0'
+
+          config wifi-iface 'default_radio0'
+              option device 'radio0'
+              option network 'lan'
+              option mode 'ap'
+              option ssid 'NanoPi-R1S'
+              option encryption 'psk2'
+              option key '12345678'
+              option disabled '0'
+          EOF
+
+      - name: Download Package Toolchain
+        run: |
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
 
       - name: Compile Firmware
         run: |
@@ -87,11 +90,14 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          # 精准只提取 NanoPi R1S-H3 的固件包和校验文件，绝对不输出其他无关板子
-          find bin/targets/sunxi/cortexa7/ -type f \( -name "*nanopi-r1s-h3*" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
+          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          
+          echo "=== 打包输出目录清单 ==="
+          ls -lh bin/out/
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-nanopi-r1s-h3
+          name: ImmortalWrt-NanoPi-R1S-H3
           path: bin/out/*
