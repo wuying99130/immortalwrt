@@ -1,93 +1,80 @@
 name: Build ImmortalWrt for NanoPi R1S-H3
 
 on:
-  repository_dispatch:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-    - name: Initialization Environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install asciidoc bash bc binutils bzip2 dos2unix flex gawk git gnutls-bin g++ intltool jq libncurses5-dev libssl-dev libz-dev lzma make mercurial patch rsync scm subversion swig texinfo uglifyjs upx-ucl uuid-dev wget xmlto xxd zlib1g-dev
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
+      - name: Initialization Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison gawk g++-multilib g++ \
+            gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
+            file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
 
-    - name: Clone Source Code
-      run: |
-        git clone -b openwrt-23.05 https://github.com/immortalwrt/immortalwrt.git openwrt
+      - name: Update Feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-    - name: Update Feeds
-      run: |
-        cd openwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+      - name: Update Configuration and DTS
+        run: |
+          cp r1s-h3.config.seed .config
+          
+          # 1. 完整保留架构与设备目标
+          echo "CONFIG_TARGET_sunxi=y" >> .config
+          echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
+          echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
+          
+          # 2. 强制补全无线网卡驱动、无线工具及中文语言支持（确保 WiFi 正常）
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
+          echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_iw=y" >> .config
+          echo "CONFIG_PACKAGE_iwinfo=y" >> .config
+          echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
+          
+          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
+          DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
+          if [ -n "$DTS_FILE" ]; then
+            sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
+          fi
+          
+          make defconfig
 
-    - name: Update Configuration and DTS
-      run: |
-        if [ -e r1s-h3.config.seed ]; then
-          cp r1s-h3.config.seed openwrt/.config
-        elif [ -e .config ]; then
-          cp .config openwrt/.config
-        fi
-        cd openwrt
-        
-        # 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay，保障无线网卡驱动拉起
-        DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
-        if [ -n "$DTS_FILE" ]; then
-          sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
-        fi
-        
-        make defconfig
+      - name: Download Package Toolchain
+        run: |
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
 
-    - name: Download Package Toolchain
-      run: |
-        cd openwrt
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
+      - name: Compile Firmware
+        run: |
+          make -j$(nproc) || make -j1 V=s
 
-    - name: Compile Firmware
-      run: |
-        cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 V=s
+      - name: Organize Artifacts
+        run: |
+          mkdir -p bin/out
+          
+          echo "=== 正在精准提取 NanoPi R1S-H3 专属固件 ==================="
+          # 精准匹配：只提取包含 nanopi-r1s-h3 标识的固件镜像和校验文件，绝不混入其他杂项
+          find bin/targets/sunxi/cortexa7/ -type f \( -name "*nanopi-r1s-h3*.img.gz" -o -name "*nanopi-r1s-h3*.bin" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          
+          echo "=== 最终打包输出目录清单 ==="
+          ls -lh bin/out/
 
-    - name: Organize Files and Upload
-      id: organize
-      if: (!cancelled())
-      run: |
-        cd openwrt
-        mkdir -p firmware_out
-        
-        # 精准定位 sunxi/cortexa7 目录，剔除 packages，把属于镜像产物和校验文件拷贝出来
-        TARGET_DIR=$(find bin/targets/sunxi/ -type d -name "cortexa7" | head -n 1)
-        if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then
-          rm -rf "$TARGET_DIR/packages"
-          find "$TARGET_DIR" -maxdepth 1 -type f \( -name "*.img.gz" -o -name "*.bin" -o -name "sha256sums" \) -exec cp -f {} firmware_out/ \;
-        fi
-        
-        echo "FIRMWARE=$PWD/firmware_out" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_ENV
-        ls -lh firmware_out/
-
-    - name: Upload Firmware to Release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: nano-r1s-h3-base-$(date +%Y%m%d)
-        files: ${{ env.FIRMWARE }}/*
-        body: |
-          NanoPi R1S-H3 专属定制固件
-          - 包含中文界面与 Argon 主题
-          - 完美支持有线网卡与板载无线网卡（BCM43430 SDIO）
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-NanoPi-R1S-H3
+          path: bin/out/*
