@@ -66,8 +66,8 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在精准提取 NanoPi R1S-H3 专属固件 ==================="
-          # 精准匹配：只提取包含 nanopi-r1s-h3 标识的固件镜像和校验文件，绝不混入其他杂项
+          echo "=== 正在精准提取 NanoPi R1S-H3 专属固件 ==="
+          # 精准匹配：只提取包含 nanopi-r1s-h3 标识的镜像和校验文件，过滤几十个不相干的杂项
           find bin/targets/sunxi/cortexa7/ -type f \( -name "*nanopi-r1s-h3*.img.gz" -o -name "*nanopi-r1s-h3*.bin" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 最终打包输出目录清单 ==="
