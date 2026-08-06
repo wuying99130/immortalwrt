@@ -69,11 +69,5 @@ CONFIG_PACKAGE_wireless-tools=y
 CONFIG_PACKAGE_hostapd-common=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=y
 
-# 5. Passwall 基础核心组件关联（配合工作流自动拉取的 feeds 目录）
-CONFIG_PACKAGE_luci-app-passwall=y
-CONFIG_PACKAGE_xray-core=y
-CONFIG_PACKAGE_sing-box=y
-CONFIG_PACKAGE_v2ray-geodata=y
-
-# 6. 分区容量调整
+# 5. 分区容量调整
 CONFIG_TARGET_ROOTFS_PARTSIZE=380
