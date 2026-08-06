@@ -6,7 +6,7 @@ on:
     inputs:
       ssh:
         description: 'SSH connection to Actions'
-        required: false
+        required: 'false'
         default: 'false'
         type: boolean
 
@@ -24,8 +24,9 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
+        # 修正：去掉了不存在的虚拟包 build-upstream-tools
         sudo -E apt-get -qq install $(cat << 'EOF'
-        build-upstream-tools asciidoc bash bc binutils bzip2 diffcore-utils dos2unix \
+        asciidoc bash bc binutils bzip2 diffcore-utils dos2unix \
         flex gawk git gnutls-bin g++ intltool jq libncurses5-dev libssl-dev \
         libz-dev lzma make mercurial patch rsync scm subversion swig texinfo \
         uglifyjs upx-ucl uuid-dev wget xmlto xxd zlib1g-dev
@@ -47,7 +48,12 @@ jobs:
     - name: Load Custom Configuration
       run: |
         [ -e files ] && mv files openwrt/files
-        [ -e .config ] && cp .config openwrt/.config
+        # 修正：将仓库根目录的 r1s-h3.config.seed 准确复制并重命名为 openwrt 内核的 .config
+        if [ -e r1s-h3.config.seed ]; then
+          cp r1s-h3.config.seed openwrt/.config
+        elif [ -e .config ]; then
+          cp .config openwrt/.config
+        fi
         cd openwrt
         make defconfig
 
