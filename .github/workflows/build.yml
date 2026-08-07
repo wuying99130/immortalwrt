@@ -35,7 +35,7 @@ jobs:
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 精简且必要的网络与中文配置（移除了所有冗余底层包，避免引发依赖泛洪）
+          # 2. 仅包含你测试成功的网络与中文基础配置（绝不多加任何额外依赖）
           echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
@@ -66,9 +66,9 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在精准提取 NanoPi R1S-H3 专属固件 ==="
-          # 严格限制只抓取 r1s-h3 专属镜像，彻底根绝 975MB 大杂烩
-          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*nanopi-r1s-h3*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
+          # 完全采用你最初发给我的原版收集语句，不做任何私自修改
+          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
