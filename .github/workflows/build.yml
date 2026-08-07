@@ -35,33 +35,17 @@ jobs:
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 完美有线、无线网卡及底层网络硬件配置
+          # 2. 精简且必要的网络与中文配置（移除了所有冗余底层包，避免引发依赖泛洪）
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
-          echo "CONFIG_BRCMFMAC_SDIO=y" >> .config
           echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
           echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
-          echo "CONFIG_PACKAGE_armbian-firmware-nanopi=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-leds-gpio=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-rfkill=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-rfkill-gpio=y" >> .config
-          echo "CONFIG_PACKAGE_rfkill=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-mmc=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-mmc-sunxi=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-sdhci=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-regulator=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-regulator-fixed=y" >> .config
           echo "CONFIG_PACKAGE_iw=y" >> .config
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 3. 完整中文语言与翻译包支持
-          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y" >> .config
-          
-          # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
+          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
@@ -82,9 +66,9 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
-          # 只复制 cortexa7 根目录下的 .img.gz 固件和 sha256 校验文件，确保无线和所有功能正常带入
-          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          echo "=== 正在精准提取 NanoPi R1S-H3 专属固件 ==="
+          # 严格限制只抓取 r1s-h3 专属镜像，彻底根绝 975MB 大杂烩
+          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*nanopi-r1s-h3*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
