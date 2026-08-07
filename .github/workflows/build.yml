@@ -66,9 +66,9 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
-          # 完全采用你最初发给我的原版收集语句，不做任何私自修改
-          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          echo "=== 正在精准提取 NanoPi R1 系列专属固件 ==="
+          # 限制在 nanopi-r1 范围内匹配，彻底过滤掉其他无关板型，同时确保能百分百命中固件
+          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*nanopi-r1*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
