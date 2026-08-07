@@ -35,10 +35,13 @@ jobs:
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 仅包含你测试成功的网络与中文基础配置（绝不多加任何额外依赖）
+          # 2. 补全无线网卡驱动、底层总线、无线工具及中文语言支持，确保硬件驱动闭环
           echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-brcmutil=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-cfg80211=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-mmc=y" >> .config
           echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
           echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
           echo "CONFIG_PACKAGE_iw=y" >> .config
