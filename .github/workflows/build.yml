@@ -30,30 +30,35 @@ jobs:
         run: |
           cp r1s-h3.config.seed .config
           
-          # 1. 完整保留架构与设备目标（精准锁定 NanoPi R1S-H3）
+          # 1. 完整保留架构与设备目标
           echo "CONFIG_TARGET_sunxi=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 补全精细化的无线网卡、SDIO 控制器及固件驱动配置
+          # 2. 补全符合 NanoPi R1S-H3 (AP6212 / BCM43430 SDIO) 硬件的无线网卡与底层固件配置
           echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
           echo "CONFIG_BRCMFMAC_SDIO=y" >> .config
           echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
           echo "CONFIG_PACKAGE_armbian-firmware-nanopi=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-leds-gpio=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-rfkill=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-rfkill-gpio=y" >> .config
+          echo "CONFIG_PACKAGE_rfkill=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-mmc=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-mmc-sunxi=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-sdhci=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-regulator=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-regulator-fixed=y" >> .config
           echo "CONFIG_PACKAGE_iw=y" >> .config
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 3. 完美修复 DTS 文件中的 mmc2 (SDIO WiFi) 节点，开启 okay 并赋予总线和电源属性
+          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
-            echo "=== 正在向 DTS 写入专用的 WiFi 驱动与供电节点: $DTS_FILE ==="
-            sed -i '/&mmc2/,/};/ {
-              s/status = "disabled";/status = "okay";/
-              s/status = "okay";/status = "okay";\n\tbus-width = <4>;\n\tnomedia;\n\tkeep-power-in-suspend;/
-            }' "$DTS_FILE"
+            sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
           fi
           
           make defconfig
@@ -72,7 +77,7 @@ jobs:
           mkdir -p bin/out
           
           echo "=== 正在打包 NanoPi R1S-H3 完整固件 ==="
-          # 严格沿用 A 方案的稳定收集策略：只取 cortexa7 根目录下的标准 .img.gz 固件与校验文件
+          # 只复制 cortexa7 根目录下的 .img.gz 固件和 sha256 校验文件，确保无线和所有功能正常带入
           find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
           
           echo "=== 打包输出目录清单 ==="
