@@ -35,13 +35,13 @@ jobs:
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 补全符合 NanoPi R1S-H3 (AP6212 / BCM43430 SDIO) 硬件的无线网卡与底层固件配置
-          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          # 2. 完美有线、无线网卡及底层网络硬件配置
+          echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
           echo "CONFIG_BRCMFMAC_SDIO=y" >> .config
           echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
           echo "CONFIG_PACKAGE_armbian-firmware-nanopi=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-leds-gpio=y" >> .config
           echo "CONFIG_PACKAGE_kmod-rfkill=y" >> .config
           echo "CONFIG_PACKAGE_kmod-rfkill-gpio=y" >> .config
@@ -55,7 +55,13 @@ jobs:
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 状态为 okay
+          # 3. 完整中文语言与翻译包支持
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y" >> .config
+          
+          # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
