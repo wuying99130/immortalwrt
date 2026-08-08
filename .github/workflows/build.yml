@@ -68,13 +68,16 @@ jobs:
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 3. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
+          # 3. 【已补齐】开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
+          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          
+          # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
           fi
           
-          # 4. 植入开机固定 MAC、静态 IP 及 DHCP 极速响应初始化脚本
+          # 5. 植入开机固定 MAC、静态 IP 及 DHCP 极速响应初始化脚本
           mkdir -p files/etc/uci-defaults
           cat << 'EOF' > files/etc/uci-defaults/99-custom-network-settings
           #!/bin/sh
@@ -121,15 +124,26 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在精准提取 NanoPi R1 系列专属固件并重命名 ==="
+          echo "=== 正在精准提取 NanoPi R1 固件及 Armbian Docker 容器包 ==="
           BUILD_DATE=$(date +%Y%m%d)
           
+          # 1. 提取常规刷机镜像 (.img.gz)
           for file in bin/targets/sunxi/cortexa7/*nanopi-r1*.img.gz; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
               new_filename="${filename%.img.gz}-$BUILD_DATE.img.gz"
               cp -f "$file" "bin/out/$new_filename"
-              echo "已重命名: $filename -> $new_filename"
+              echo "已重命名镜像: $filename -> $new_filename"
+            fi
+          done
+          
+          # 2. 【已补齐】提取适用于 Armbian Docker 的 rootfs 压缩包
+          for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              new_filename="immortalwrt-sunxi-cortexa7-rootfs-$BUILD_DATE.tar.gz"
+              cp -f "$file" "bin/out/$new_filename"
+              echo "已提取 Docker 容器包: $filename -> $new_filename"
             fi
           done
           
