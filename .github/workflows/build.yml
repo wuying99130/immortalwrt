@@ -2,6 +2,12 @@ name: Build ImmortalWrt for NanoPi R1S-H3
 
 on:
   workflow_dispatch:
+    inputs:
+      custom_feed_url:
+        description: '添加自定义软件源地址 (例如: https://github.com/...)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build:
@@ -21,6 +27,18 @@ jobs:
             file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
             libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
 
+      - name: Add Custom Feeds from Web Input
+        run: |
+          if [ -n "${{ inputs.custom_feed_url }}" ]; then
+            echo "检测到自定义源输入，正在添加: ${{ inputs.custom_feed_url }}"
+            echo "src-git custom_feed ${{ inputs.custom_feed_url }}" >> feeds.conf.default
+          else
+            echo "未输入自定义源，跳过..."
+          fi
+          
+          echo "=== 当前 Feeds 配置文件内容 ==="
+          cat feeds.conf.default
+
       - name: Update Feeds
         run: |
           ./scripts/feeds update -a
@@ -35,8 +53,10 @@ jobs:
           echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
           
-          # 2. 补全无线网卡驱动、底层总线、无线工具及中文语言支持，确保硬件驱动闭环
+          # 2. 补全无线网卡驱动、底层总线、无线工具、中文语言支持及软件源/软件包管理界面
           echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmutil=y" >> .config
@@ -69,9 +89,21 @@ jobs:
         run: |
           mkdir -p bin/out
           
-          echo "=== 正在精准提取 NanoPi R1 系列专属固件 ==="
-          # 限制在 nanopi-r1 范围内匹配，彻底过滤掉其他无关板型，同时确保能百分百命中固件
-          find bin/targets/sunxi/cortexa7/ -maxdepth 1 -type f \( -name "*nanopi-r1*.img.gz" -o -name "sha256sums" \) -exec cp -f {} bin/out/ \;
+          echo "=== 正在精准提取 NanoPi R1 系列专属固件并重命名 ==="
+          BUILD_DATE=$(date +%Y%m%d)
+          
+          for file in bin/targets/sunxi/cortexa7/*nanopi-r1*.img.gz; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              new_filename="${filename%.img.gz}-$BUILD_DATE.img.gz"
+              cp -f "$file" "bin/out/$new_filename"
+              echo "已重命名: $filename -> $new_filename"
+            fi
+          done
+          
+          if [ -f "bin/targets/sunxi/cortexa7/sha256sums" ]; then
+            cp -f bin/targets/sunxi/cortexa7/sha256sums bin/out/
+          fi
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
