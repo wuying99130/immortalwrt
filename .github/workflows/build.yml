@@ -1,4 +1,50 @@
-- name: Update Configuration and DTS
+name: Build ImmortalWrt for NanoPi R1S-H3
+
+on:
+  workflow_dispatch:
+    inputs:
+      custom_feed_url:
+        description: '添加自定义软件源地址 (例如: https://github.com/...)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v5
+
+      - name: Initialization Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison gawk g++-multilib g++ \
+            gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
+            file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
+
+      - name: Add Custom Feeds from Web Input
+        run: |
+          if [ -n "${{ inputs.custom_feed_url }}" ]; then
+            echo "检测到自定义源输入，正在添加: ${{ inputs.custom_feed_url }}"
+            echo "src-git custom_feed ${{ inputs.custom_feed_url }}" >> feeds.conf.default
+          else
+            echo "未输入自定义源，跳过..."
+          fi
+          
+          echo "=== 当前 Feeds 配置文件内容 ==="
+          cat feeds.conf.default
+
+      - name: Update Feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Update Configuration and DTS
         run: |
           cp r1s-h3.config.seed .config
           
@@ -42,20 +88,18 @@
           # 4. 开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
           echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
           
-          # 5. 【核心精准修复】直接在源码 DTS 中强制绑定 uart0 与 stdout-path 控制台
+          # 5. 直接在源码 DTS 中强制绑定 uart0 与 stdout-path 控制台
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
             echo "找到目标 DTS 文件: $DTS_FILE，正在注入串口控制台绑定..."
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
             sed -i '/&uart0/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
             
-            # 如果没有 chosen 节点，或者 chosen 节点内没有 stdout-path，则强制写入
             if grep -q "chosen {" "$DTS_FILE"; then
               if ! grep -q "stdout-path" "$DTS_FILE"; then
                 sed -i '/chosen {/a \ \ \ \ stdout-path = "serial0:115200n8";' "$DTS_FILE"
               fi
             else
-              # 如果连 chosen 节点都没有，在根节点下直接追加一个
               echo -e "\n/ {\n\tchosen {\n\t\tstdout-path = \"serial0:115200n8\";\n\t};\n};" >> "$DTS_FILE"
             fi
           fi
@@ -65,7 +109,6 @@
           cat << 'EOF' > files/etc/uci-defaults/99-custom-network-settings
           #!/bin/sh
           
-          # 设置网络与固定桥接 LAN
           uci set network.lan=interface
           uci set network.lan.device='br-lan'
           uci set network.lan.proto='static'
@@ -80,7 +123,6 @@
           uci set network.@device[0].type='bridge'
           uci set network.@device[0].macaddr='02:42:ac:11:00:02'
           
-          # 设置内置 DHCP 服务
           uci set dhcp.lan=dhcp
           uci set dhcp.lan.interface='lan'
           uci set dhcp.lan.start='100'
@@ -89,17 +131,62 @@
           uci set dhcp.lan.authoritative='1'
           uci set dhcp.lan.force='1'
           
-          # 设定默认主机名为 nanopi-r1
           uci set system.@system[0].hostname='nanopi-r1'
           
           uci commit network
           uci commit dhcp
           uci commit system
           
-          # 确保开机自启 avahi-daemon 服务
           /etc/init.d/avahi-daemon enable
           /etc/init.d/avahi-daemon start || true
           EOF
           chmod +x files/etc/uci-defaults/99-custom-network-settings
           
           make defconfig
+
+      - name: Download Package Toolchain
+        run: |
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile Firmware
+        run: |
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p bin/out
+          
+          echo "=== 正在精准提取 NanoPi R1 固件及 Armbian Docker 容器包 ==="
+          BUILD_DATE=$(date +%Y%m%d)
+          
+          for file in bin/targets/sunxi/cortexa7/*nanopi-r1*.img.gz; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              new_filename="${filename%.img.gz}-$BUILD_DATE.img.gz"
+              cp -f "$file" "bin/out/$new_filename"
+              echo "已重命名镜像: $filename -> $new_filename"
+            fi
+          done
+          
+          for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              new_filename="immortalwrt-sunxi-cortexa7-rootfs-$BUILD_DATE.tar.gz"
+              cp -f "$file" "bin/out/$new_filename"
+              echo "已提取 Docker 容器包: $filename -> $new_filename"
+            fi
+          done
+          
+          if [ -f "bin/targets/sunxi/cortexa7/sha256sums" ]; then
+            cp -f bin/targets/sunxi/cortexa7/sha256sums bin/out/
+          fi
+          
+          echo "=== 打包输出目录清单 ==="
+          ls -lh bin/out/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-NanoPi-R1S-H3
+          path: bin/out/*
