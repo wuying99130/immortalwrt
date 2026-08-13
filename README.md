@@ -1,3 +1,10 @@
+
+第37版wifi功能正常第一版
+第38版增加插件源编辑固件日期版本号
+第40版添加docker容器
+
+
+
 <img src="https://avatars.githubusercontent.com/u/53193414?s=200&v=4" alt="logo" width="200" height="200" align="right">
 
 # Project ImmortalWrt
