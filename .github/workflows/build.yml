@@ -41,6 +41,13 @@ jobs:
 
       - name: Update Feeds
         run: |
+          # 核心修复：直接把会引发全网依赖警告、缺失 libwayland 以及递归死锁的 video、telephony 软件源从源头抹掉
+          sed -i '/telephony/d' feeds.conf.default
+          sed -i '/video/d' feeds.conf.default
+          
+          echo "=== 清理冗余源后的 Feeds 配置 ==="
+          cat feeds.conf.default
+
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
