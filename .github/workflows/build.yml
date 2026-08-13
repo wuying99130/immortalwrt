@@ -68,11 +68,18 @@ jobs:
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 【新增】安全植入 mDNS 广播依赖包（支持免IP主机名直连解析）
+          # 植入 mDNS 广播依赖包（支持免IP主机名直连解析）
           echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config
           echo "CONFIG_PACKAGE_libnss-mdns=y" >> .config
           
-          # 3. 【已补齐】开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
+          # 【新增】强制激活串口驱动与内核控制台绑定参数（解决串口无显示、无光标）
+          echo "CONFIG_SERIAL_8250=y" >> .config
+          echo "CONFIG_SERIAL_8250_CONSOLE=y" >> .config
+          echo "CONFIG_SERIAL_OF_PLATFORM=y" >> .config
+          echo "CONFIG_KERNEL_PRINTK=y" >> .config
+          echo "CONFIG_KERNEL_CMDLINE=\"earlycon=uart8250,mmio32,0x01c28000 console=ttyS0,115200\"" >> .config
+          
+          # 3. 开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
           echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
           
           # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
@@ -151,7 +158,7 @@ jobs:
             fi
           done
           
-          # 2. 【已补齐】提取适用于 Armbian Docker 的 rootfs 压缩包
+          # 2. 提取适用于 Armbian Docker 的 rootfs 压缩包
           for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
