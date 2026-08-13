@@ -68,6 +68,10 @@ jobs:
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
+          # 【新增】安全植入 mDNS 广播依赖包（支持免IP主机名直连解析）
+          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config
+          echo "CONFIG_PACKAGE_libnss-mdns=y" >> .config
+          
           # 3. 【已补齐】开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
           echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
           
@@ -77,11 +81,12 @@ jobs:
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
           fi
           
-          # 5. 植入开机固定 MAC、静态 IP 及 DHCP 极速响应初始化脚本
+          # 5. 植入开机固定 MAC、静态 IP、DHCP 极速响应及 mDNS 主机名广播初始化脚本
           mkdir -p files/etc/uci-defaults
           cat << 'EOF' > files/etc/uci-defaults/99-custom-network-settings
           #!/bin/sh
           
+          # 设置网络与固定桥接 LAN
           uci set network.lan=interface
           uci set network.lan.device='br-lan'
           uci set network.lan.proto='static'
@@ -96,6 +101,7 @@ jobs:
           uci set network.@device[0].type='bridge'
           uci set network.@device[0].macaddr='02:42:ac:11:00:02'
           
+          # 设置内置 DHCP 服务
           uci set dhcp.lan=dhcp
           uci set dhcp.lan.interface='lan'
           uci set dhcp.lan.start='100'
@@ -104,8 +110,16 @@ jobs:
           uci set dhcp.lan.authoritative='1'
           uci set dhcp.lan.force='1'
           
+          # 安全设定默认主机名为 nanopi-r1（防止与上游命名冲突并提供 mDNS 兜底）
+          uci set system.@system[0].hostname='nanopi-r1'
+          
           uci commit network
           uci commit dhcp
+          uci commit system
+          
+          # 确保开机自启 avahi-daemon 服务
+          /etc/init.d/avahi-daemon enable
+          /etc/init.d/avahi-daemon start || true
           EOF
           chmod +x files/etc/uci-defaults/99-custom-network-settings
           
