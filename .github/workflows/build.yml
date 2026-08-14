@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout Source
         uses: actions/checkout@v5
+        with:
+          ref: 'openwrt-25.12'
 
       - name: Initialization Environment
         env:
@@ -26,7 +28,6 @@ jobs:
             gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
             file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
             libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
-
       - name: Add Custom Feeds from Web Input
         run: |
           if [ -n "${{ inputs.custom_feed_url }}" ]; then
@@ -38,30 +39,48 @@ jobs:
           
           echo "=== 当前 Feeds 配置文件内容 ==="
           cat feeds.conf.default
-
       - name: Update Feeds
         run: |
-          # 核心修复：直接把会引发全网依赖警告、缺失 libwayland 以及递归死锁的 video、telephony 软件源从源头抹掉
-          sed -i '/telephony/d' feeds.conf.default
-          sed -i '/video/d' feeds.conf.default
-          
-          echo "=== 清理冗余源后的 Feeds 配置 ==="
-          cat feeds.conf.default
-
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
       - name: Update Configuration and DTS
         run: |
           cp r1s-h3.config.seed .config
           
-          # 1. 自动修复 DTS 设备树文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
+          # 1. 完整保留架构与设备目标
+          echo "CONFIG_TARGET_sunxi=y" >> .config
+          echo "CONFIG_TARGET_sunxi_cortexa7=y" >> .config
+          echo "CONFIG_TARGET_sunxi_cortexa7_DEVICE_friendlyarm_nanopi-r1s-h3=y" >> .config
+          
+          # 2. 补全无线网卡驱动、底层总线、无线工具、中文语言支持及软件源/软件包管理界面
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-Hans=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-brcmutil=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-cfg80211=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-mmc=y" >> .config
+          echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_iw=y" >> .config
+          echo "CONFIG_PACKAGE_iwinfo=y" >> .config
+          echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
+          
+          # 【新增】安全植入 mDNS 广播依赖包（支持免IP主机名直连解析）
+          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config
+          echo "CONFIG_PACKAGE_libnss-mdns=y" >> .config
+          
+          # 3. 【已补齐】开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
+          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          
+          # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
           if [ -n "$DTS_FILE" ]; then
             sed -i '/&mmc2/,/};/s/status = "disabled";/status = "okay";/' "$DTS_FILE"
           fi
           
-          # 2. 植入开机固定 MAC、静态 IP、DHCP 及 mDNS 主机名广播初始化脚本
+          # 5. 植入开机固定 MAC、静态 IP、DHCP 极速响应及 mDNS 主机名广播初始化脚本
           mkdir -p files/etc/uci-defaults
           cat << 'EOF' > files/etc/uci-defaults/99-custom-network-settings
           #!/bin/sh
@@ -90,7 +109,7 @@ jobs:
           uci set dhcp.lan.authoritative='1'
           uci set dhcp.lan.force='1'
           
-          # 设定默认主机名为 nanopi-r1
+          # 安全设定默认主机名为 nanopi-r1（防止与上游命名冲突并提供 mDNS 兜底）
           uci set system.@system[0].hostname='nanopi-r1'
           
           uci commit network
@@ -104,16 +123,13 @@ jobs:
           chmod +x files/etc/uci-defaults/99-custom-network-settings
           
           make defconfig
-
       - name: Download Package Toolchain
         run: |
           make download -j8
           find dl -size -1024c -exec rm -f {} \;
-
       - name: Compile Firmware
         run: |
           make -j$(nproc) || make -j1 V=s
-
       - name: Organize Artifacts
         run: |
           mkdir -p bin/out
@@ -121,6 +137,7 @@ jobs:
           echo "=== 正在精准提取 NanoPi R1 固件及 Armbian Docker 容器包 ==="
           BUILD_DATE=$(date +%Y%m%d)
           
+          # 1. 提取常规刷机镜像 (.img.gz)
           for file in bin/targets/sunxi/cortexa7/*nanopi-r1*.img.gz; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
@@ -130,6 +147,7 @@ jobs:
             fi
           done
           
+          # 2. 【已补齐】提取适用于 Armbian Docker 的 rootfs 压缩包
           for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
@@ -145,7 +163,6 @@ jobs:
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
-
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
