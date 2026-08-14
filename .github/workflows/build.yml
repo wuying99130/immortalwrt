@@ -16,6 +16,7 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v5
         with:
+          repository: 'immortalwrt/immortalwrt'
           ref: 'openwrt-25.12'
 
       - name: Initialization Environment
@@ -28,6 +29,7 @@ jobs:
             gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
             file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
             libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
+
       - name: Add Custom Feeds from Web Input
         run: |
           if [ -n "${{ inputs.custom_feed_url }}" ]; then
@@ -39,13 +41,21 @@ jobs:
           
           echo "=== 当前 Feeds 配置文件内容 ==="
           cat feeds.conf.default
+
       - name: Update Feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
       - name: Update Configuration and DTS
         run: |
           cp r1s-h3.config.seed .config
+          
+          # 【彻底解决版本问题】强制改写源码中的版本控制文件，彻底抹掉 SNAPSHOT 标识
+          if [ -f "include/version.mk" ]; then
+            sed -i 's/snapshot/releases\/v25.12/g' include/version.mk
+            sed -i 's/SNAPSHOT/v25.12/g' include/version.mk || true
+          fi
           
           # 1. 完整保留架构与设备目标
           echo "CONFIG_TARGET_sunxi=y" >> .config
@@ -67,11 +77,11 @@ jobs:
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
           
-          # 【新增】安全植入 mDNS 广播依赖包（支持免IP主机名直连解析）
+          # 安全植入 mDNS 广播依赖包（支持免IP主机名直连解析）
           echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config
           echo "CONFIG_PACKAGE_libnss-mdns=y" >> .config
           
-          # 3. 【已补齐】开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
+          # 3. 开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
           echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
           
           # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
@@ -123,13 +133,16 @@ jobs:
           chmod +x files/etc/uci-defaults/99-custom-network-settings
           
           make defconfig
+
       - name: Download Package Toolchain
         run: |
           make download -j8
           find dl -size -1024c -exec rm -f {} \;
+
       - name: Compile Firmware
         run: |
           make -j$(nproc) || make -j1 V=s
+
       - name: Organize Artifacts
         run: |
           mkdir -p bin/out
@@ -147,7 +160,7 @@ jobs:
             fi
           done
           
-          # 2. 【已补齐】提取适用于 Armbian Docker 的 rootfs 压缩包
+          # 2. 提取适用于 Armbian Docker 的 rootfs 压缩包
           for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
@@ -163,6 +176,7 @@ jobs:
           
           echo "=== 打包输出目录清单 ==="
           ls -lh bin/out/
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
