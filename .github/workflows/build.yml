@@ -1,45 +1,36 @@
-name: Build ImmortalWrt for NanoPi R1S-H3
+name: Build ImmortalWrt Firmware
 
 on:
   workflow_dispatch:
-    inputs:
-      custom_feed_url:
-        description: '添加自定义软件源地址 (例如: https://github.com/...)'
-        required: false
-        default: ''
-        type: string
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    
     steps:
       - name: Checkout Source
         uses: actions/checkout@v5
         with:
+          repository: 'immortalwrt/immortalwrt'
           ref: 'openwrt-25.12'
+          fetch-depth: 0
 
       - name: Initialization Environment
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo docker image prune --all --force
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison gawk g++-multilib g++ \
-            gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev \
-            file wget swig libelf-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev \
-            libtool ninja-build p7zip p7zip-full qemu-utils u-boot-tools upx-ucl xxd
-
-      - name: Add Custom Feeds from Web Input
-        run: |
-          if [ -n "${{ inputs.custom_feed_url }}" ]; then
-            echo "检测到自定义源输入，正在添加: ${{ inputs.custom_feed_url }}"
-            echo "src-git custom_feed ${{ inputs.custom_feed_url }}" >> feeds.conf.default
-          else
-            echo "未输入自定义源，跳过..."
-          fi
-          
-          echo "=== 当前 Feeds 配置文件内容 ==="
-          cat feeds.conf.default
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
+            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
+            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
+            python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
+            upx-ucl unzip wget xmlto xxd zlib1g-dev zstd
+          sudo apt-get clean
 
       - name: Update Feeds
         run: |
@@ -127,51 +118,28 @@ jobs:
           
           make defconfig
 
-      - name: Download Package Toolchain
+      - name: Download Package
         run: |
           make download -j8
+          find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
       - name: Compile Firmware
         run: |
+          echo -e "$(nproc) thread compile"
           make -j$(nproc) || make -j1 V=s
 
-      - name: Organize Artifacts
+      - name: Organize Files
+        id: organize
+        if: (!cancelled())
         run: |
-          mkdir -p bin/out
-          
-          echo "=== 正在精准提取 NanoPi R1 固件及 Armbian Docker 容器包 ==="
-          BUILD_DATE=$(date +%Y%m%d)
-          
-          # 1. 提取常规刷机镜像 (.img.gz)
-          for file in bin/targets/sunxi/cortexa7/*nanopi-r1*.img.gz; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              new_filename="${filename%.img.gz}-$BUILD_DATE.img.gz"
-              cp -f "$file" "bin/out/$new_filename"
-              echo "已重命名镜像: $filename -> $new_filename"
-            fi
-          done
-          
-          # 2. 提取适用于 Armbian Docker 的 rootfs 压缩包
-          for file in bin/targets/sunxi/cortexa7/*rootfs.tar.gz; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              new_filename="immortalwrt-sunxi-cortexa7-rootfs-$BUILD_DATE.tar.gz"
-              cp -f "$file" "bin/out/$new_filename"
-              echo "已提取 Docker 容器包: $filename -> $new_filename"
-            fi
-          done
-          
-          if [ -f "bin/targets/sunxi/cortexa7/sha256sums" ]; then
-            cp -f bin/targets/sunxi/cortexa7/sha256sums bin/out/
-          fi
-          
-          echo "=== 打包输出目录清单 ==="
-          ls -lh bin/out/
+          cd bin/targets/*/*
+          rm -rf packages profiles.json version.buildinfo sha256sums
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Upload Artifacts
+      - name: Upload Firmware to Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-NanoPi-R1S-H3
-          path: bin/out/*
+          name: OpenWrt_firmware
+          path: ${{ env.FIRMWARE }}
