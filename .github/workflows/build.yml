@@ -16,7 +16,6 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v5
         with:
-          repository: 'immortalwrt/immortalwrt'
           ref: 'openwrt-25.12'
 
       - name: Initialization Environment
@@ -50,12 +49,6 @@ jobs:
       - name: Update Configuration and DTS
         run: |
           cp r1s-h3.config.seed .config
-          
-          # 【彻底解决版本问题】强制改写源码中的版本控制文件，彻底抹掉 SNAPSHOT 标识
-          if [ -f "include/version.mk" ]; then
-            sed -i 's/snapshot/releases\/v25.12/g' include/version.mk
-            sed -i 's/SNAPSHOT/v25.12/g' include/version.mk || true
-          fi
           
           # 1. 完整保留架构与设备目标
           echo "CONFIG_TARGET_sunxi=y" >> .config
