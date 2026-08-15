@@ -16,7 +16,8 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v5
         with:
-          repository: 'immortalwrt/immortalwrt'
+          # 【核心修改点】让主分支的这次工作流在运行时，
+          # 直接去克隆和锁定 25.12 稳定版分支的官方源码
           ref: 'openwrt-25.12'
           fetch-depth: 0
 
@@ -47,6 +48,8 @@ jobs:
           ./scripts/feeds install -a
       - name: Update Configuration and DTS
         run: |
+          # 【核心修改点】删除了原本那句会报错的 "git checkout master -- r1s-h3.config.seed"
+          # 既然当前主分支的根目录下本来就有 r1s-h3.config.seed，直接复制即可
           cp r1s-h3.config.seed .config
           
           # 1. 完整保留架构与设备目标
@@ -60,11 +63,8 @@ jobs:
           echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-Hans=y" >> .config
           echo "CONFIG_PACKAGE_kmod-usb-net-rtl8152=y" >> .config
           echo "CONFIG_PACKAGE_kmod-brcmfmac=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-brcmutil=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-cfg80211=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-mmc=y" >> .config
           echo "CONFIG_PACKAGE_brcmfmac-firmware-43430-sdio=y" >> .config
-          echo "CONFIG_PACKAGE_cypress-firmware-43430-sdio=y" >> .config
+          echo "CONFIG_PACKAGE_armbian-firmware-nanopi=y" >> .config
           echo "CONFIG_PACKAGE_iw=y" >> .config
           echo "CONFIG_PACKAGE_iwinfo=y" >> .config
           echo "CONFIG_PACKAGE_wpad-basic-mbedtls=y" >> .config
