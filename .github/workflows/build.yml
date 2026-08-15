@@ -38,12 +38,17 @@ jobs:
             echo "src-git custom_feed ${{ inputs.custom_feed_url }}" >> feeds.conf.default
           else
             echo "未输入自定义源，跳过..."
-          fi
+          end
           
           echo "=== 当前 Feeds 配置文件内容 ==="
           cat feeds.conf.default
       - name: Update Feeds
         run: |
+          # 【核心修改点】在更新 Feeds 前将默认源引用锁定到 25.12 分支，防止版本错位
+          if [ -f "feeds.conf.default" ]; then
+            sed -i 's/\^master/openwrt-25.12/g' feeds.conf.default
+            sed -i 's/;master/;openwrt-25.12/g' feeds.conf.default || true
+          fi
           ./scripts/feeds update -a
           ./scripts/feeds install -a
       - name: Update Configuration and DTS
@@ -75,6 +80,10 @@ jobs:
           
           # 3. 开启 Docker/容器可用的 rootfs.tar.gz 压缩包输出
           echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          
+          # 【核心死锁清理】物理抹除 25.12 分支中导致 Kconfig 递归死锁的第三方污染源
+          rm -rf feeds/packages/net/freeradius3
+          rm -rf feeds/packages/net/clixon
           
           # 4. 修复 DTS 文件中的 mmc2 (SDIO WiFi) 禁用状态为 okay
           DTS_FILE=$(find target/linux/sunxi/ -iname "*nanopi*r1s*.dts" 2>/dev/null | head -n 1)
